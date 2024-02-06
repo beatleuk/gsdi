@@ -111,43 +111,40 @@ def get_folder(service, folder_id, CSV_DATA, folder_path):
     global FOLDERCOUNT
     global FILECOUNT
     global DEEPEST
-    page_token1 = None
-    try:
-        param1 = {}
-        if page_token1:
-            param1['pageToken'] = page_token1
+    page_token1 = ''
+    while page_token1!=None:
+        try:
+            query1 = "'" + folder_id + "' in parents and trashed=false"
+            results1 = service.files().list(
+                q=query1,
+                driveId=folder_id,
+                corpora='drive',
+                includeItemsFromAllDrives='true',
+                supportsAllDrives='true',
+                orderBy='folder,name',
+                pageToken=page_token1,
+                fields="nextPageToken, files(id, name, parents, quotaBytesUsed, webViewLink, iconLink, mimeType)").execute()
+            
+            items1 = results1.get('files', [])
+            items1.sort(key=itemgetter('name'))
+            if items1:
+                for item1 in items1:
+                    current_id = item1['id']
+                    item1name = item1['name']
+                    file_size = 0
+                    if item1['mimeType'] == 'application/vnd.google-apps.folder':
+                        sub_folder_path = folder_path + "/" + item1name
+                        print("Processing folder " + sub_folder_path)
+                        get_child_sub_folders(service, current_id, CSV_DATA, folder_id, sub_folder_path)
+                    else:
+                        if item1['quotaBytesUsed']:
+                            file_size = round(int(item1['quotaBytesUsed']) / 1028,2)
+                        ##print("Processing item " + item1name)
+                        CSV_DATA.append([folder_path,folder_id,item1['mimeType'],item1name,file_size,current_id,item1['webViewLink']])
+            page_token1 = results1.get('nextPageToken')
 
-        query1 = "'" + folder_id + "' in parents"
-
-        results1 = service.files().list(
-            q=query1,
-            driveId=folder_id,
-            corpora='drive',
-            includeItemsFromAllDrives='true',
-            supportsAllDrives='true',
-            fields="nextPageToken, files(id, name, parents, quotaBytesUsed, webViewLink, iconLink, mimeType)").execute()
-        
-        items1 = results1.get('files', [])
-        items1.sort(key=itemgetter('name'))
-        if items1:
-            for item1 in items1:
-                current_id = item1['id']
-                item1name = item1['name']
-                file_size = 0
-                if item1['mimeType'] == 'application/vnd.google-apps.folder':
-                    sub_folder_path = folder_path + "/" + item1name
-                    print("Processing folder " + sub_folder_path)
-                    get_child_sub_folders(service, current_id, CSV_DATA, folder_id, sub_folder_path)
-                else:
-                    if item1['quotaBytesUsed']:
-                        file_size = round(int(item1['quotaBytesUsed']) / 1028,2)
-                    ##print("Processing item " + item1name)
-                    CSV_DATA.append([folder_path,folder_id,item1['mimeType'],item1name,file_size,current_id,item1['webViewLink']])
-
-        page_token1 = results1.get('nextPageToken')
-
-    except errors.HttpError as error:
-        print('An error occurred: ' + error)
+        except errors.HttpError as error:
+            print('An error occurred: ' + error)
 
 def get_child_sub_folders(service, parent_id, CSV_DATA, folder_id, sub_folder_path):
     """Get's the folders in the child folder
@@ -155,43 +152,41 @@ def get_child_sub_folders(service, parent_id, CSV_DATA, folder_id, sub_folder_pa
     global FOLDERCOUNT
     global FILECOUNT
     global DEEPEST
-    page_token2 = None
-    try:
-        param2 = {}
-        if page_token2:
-            param2['pageToken'] = page_token2
+    page_token2 = ''
+    while page_token2!=None:
+        try:
+            query2 = "'" + parent_id + "' in parents and trashed=false"
+            results2 = service.files().list(
+                q=query2,
+                driveId=folder_id,
+                corpora='drive',
+                includeItemsFromAllDrives='true',
+                supportsAllDrives='true',
+                orderBy='folder,name',
+                pageToken=page_token2,
+                fields="nextPageToken, files(id, name, parents, quotaBytesUsed, webViewLink, iconLink, mimeType)").execute()
 
-        query2 = "'" + parent_id + "' in parents"
+            items2 = results2.get('files', [])
+            items2.sort(key=itemgetter('name'))
+            if items2:
+                for item2 in items2:
+                    child_id = item2['id']
+                    childname = item2['name']
+                    file_size = 0
+                    if item2['mimeType'] == 'application/vnd.google-apps.folder':
+                        child_folder_path = sub_folder_path + "/" + childname
+                        print("Processing folder " + child_folder_path)
+                        get_child_sub_folders(service, child_id, CSV_DATA, folder_id, child_folder_path)
+                    else:
+                        if item2['quotaBytesUsed']:
+                            file_size = round(int(item2['quotaBytesUsed']) / 1028,2)
+                        ##print("Processing child item " + childname)
+                        CSV_DATA.append([sub_folder_path,parent_id,item2['mimeType'],childname,file_size,child_id,item2['webViewLink']])
 
-        results2 = service.files().list(
-            q=query2,
-            driveId=folder_id,
-            corpora='drive',
-            includeItemsFromAllDrives='true',
-            supportsAllDrives='true',
-            fields="nextPageToken, files(id, name, parents, quotaBytesUsed, webViewLink, iconLink, mimeType)").execute()
+            page_token2 = results2.get('nextPageToken')
 
-        items2 = results2.get('files', [])
-        items2.sort(key=itemgetter('name'))
-        if items2:
-            for item2 in items2:
-                child_id = item2['id']
-                childname = item2['name']
-                file_size = 0
-                if item2['mimeType'] == 'application/vnd.google-apps.folder':
-                    child_folder_path = sub_folder_path + "/" + childname
-                    print("Processing sub-folder " + child_folder_path)
-                    get_child_sub_folders(service, child_id, CSV_DATA, folder_id, child_folder_path)
-                else:
-                    if item2['quotaBytesUsed']:
-                        file_size = round(int(item2['quotaBytesUsed']) / 1028,2)
-                    ##print("Processing item " + childname)
-                    CSV_DATA.append([sub_folder_path,parent_id,item2['mimeType'],childname,file_size,child_id,item2['webViewLink']])
-
-        page_token2 = results2.get('nextPageToken')
-
-    except errors.HttpError as error:
-        print('An error occurred: %s' % error)
+        except errors.HttpError as error:
+            print('An error occurred: %s' % error)
 
 def main():
     """Google Shared Drive Inventory
