@@ -1,9 +1,12 @@
+Better spam filters … Now Drive automatically moves suspicious files shared with you to spam. You can still report spam yourself.Learn more
+gdfl-csv.py
 from __future__ import print_function
 import httplib2
 import os
 import sys
 import csv
 import codecs
+import re
 
 from operator import itemgetter, attrgetter
 from apiclient import errors, discovery
@@ -69,8 +72,7 @@ def process_folder(service,folder_id):
         folder = service.files().get(fileId=folder_id).execute()
         foldername = folder['name']
         drivetype = 'My Drive'
-        print("Folder ID " + folder_id + " is a Google Drive Folder called: " + foldername + "please only use Shared Drive IDs")
-        exit()
+        print("Folder ID " + folder_id + " is a Google My Drive folder called: " + foldername)
     except errors.HttpError as error:
         try:
             folder = service.drives().get(
@@ -93,19 +95,22 @@ def process_folder(service,folder_id):
     else:
         print('Building CSV file output for {0}'.format(folder['name']))
 
+    if re.search("/",foldername):
+        foldername = foldername.replace("/","-")
+
     csv_file_name = 'GDFL-' + foldername + '.csv'
     CSV_DATA = [['folderPath','parentID','mimeType','itemtName','fileSize(MB)','itemID','itemURL']]
     folder_path = '/'
 
-    get_folder(service, folder_id, CSV_DATA, folder_path)
+    get_folder(service, folder_id, CSV_DATA, folder_path, drivetype)
 
-    with open(csv_file_name, 'w', newline='') as file:
+    with open(csv_file_name, 'w', newline='', encoding='utf-8-sig') as file:
         writer = csv.writer(file)
         writer.writerows(CSV_DATA)
 
     print('Created CSV file {0}'.format(csv_file_name))
 
-def get_folder(service, folder_id, CSV_DATA, folder_path):
+def get_folder(service, folder_id, CSV_DATA, folder_path, drivetype):
     """Get's the folders in the parent folder
     """
     global FOLDERCOUNT
@@ -115,16 +120,24 @@ def get_folder(service, folder_id, CSV_DATA, folder_path):
     while page_token1!=None:
         try:
             query1 = "'" + folder_id + "' in parents and trashed=false"
-            results1 = service.files().list(
-                q=query1,
-                driveId=folder_id,
-                corpora='drive',
-                includeItemsFromAllDrives='true',
-                supportsAllDrives='true',
-                orderBy='folder,name',
-                pageToken=page_token1,
-                fields="nextPageToken, files(id, name, parents, quotaBytesUsed, webViewLink, iconLink, mimeType)").execute()
-            
+
+            if drivetype == 'Shared Drive':
+                results1 = service.files().list(
+                    q=query1,
+                    driveId=folder_id,
+                    corpora='drive',
+                    includeItemsFromAllDrives='true',
+                    supportsAllDrives='true',
+                    orderBy='folder,name',
+                    pageToken=page_token1,
+                    fields="nextPageToken, files(id, name, parents, quotaBytesUsed, webViewLink, iconLink, mimeType)").execute()
+            else:
+                results1 = service.files().list(
+                    q=query1,
+                    orderBy='folder',
+                    pageToken=page_token1,
+                    fields="nextPageToken, files(id, name, parents, quotaBytesUsed, webViewLink, iconLink, mimeType)").execute()
+
             items1 = results1.get('files', [])
             items1.sort(key=itemgetter('name'))
             if items1:
@@ -132,10 +145,10 @@ def get_folder(service, folder_id, CSV_DATA, folder_path):
                     current_id = item1['id']
                     item1name = item1['name']
                     file_size = 0
-                    if item1['mimeType'] == 'application/vnd.google-apps.folder':
+                    if item1['mimeType'] and item1['mimeType'] == 'application/vnd.google-apps.folder':
                         sub_folder_path = folder_path + "/" + item1name
                         print("Processing folder " + sub_folder_path)
-                        get_child_sub_folders(service, current_id, CSV_DATA, folder_id, sub_folder_path)
+                        get_child_sub_folders(service, current_id, CSV_DATA, folder_id, sub_folder_path, drivetype)
                     else:
                         if item1['quotaBytesUsed']:
                             file_size = round(int(item1['quotaBytesUsed']) / 1028,2)
@@ -146,7 +159,7 @@ def get_folder(service, folder_id, CSV_DATA, folder_path):
         except errors.HttpError as error:
             print('An error occurred: ' + error)
 
-def get_child_sub_folders(service, parent_id, CSV_DATA, folder_id, sub_folder_path):
+def get_child_sub_folders(service, parent_id, CSV_DATA, folder_id, sub_folder_path, drivetype):
     """Get's the folders in the child folder
     """
     global FOLDERCOUNT
@@ -156,15 +169,23 @@ def get_child_sub_folders(service, parent_id, CSV_DATA, folder_id, sub_folder_pa
     while page_token2!=None:
         try:
             query2 = "'" + parent_id + "' in parents and trashed=false"
-            results2 = service.files().list(
-                q=query2,
-                driveId=folder_id,
-                corpora='drive',
-                includeItemsFromAllDrives='true',
-                supportsAllDrives='true',
-                orderBy='folder,name',
-                pageToken=page_token2,
-                fields="nextPageToken, files(id, name, parents, quotaBytesUsed, webViewLink, iconLink, mimeType)").execute()
+
+            if drivetype == 'Shared Drive':
+                results2 = service.files().list(
+                    q=query2,
+                    driveId=folder_id,
+                    corpora='drive',
+                    includeItemsFromAllDrives='true',
+                    supportsAllDrives='true',
+                    orderBy='folder,name',
+                    pageToken=page_token2,
+                    fields="nextPageToken, files(id, name, parents, quotaBytesUsed, webViewLink, iconLink, mimeType)").execute()
+            else:
+                results2 = service.files().list(
+                    q=query2,
+                    orderBy='folder',
+                    pageToken=page_token2,
+                    fields="nextPageToken, files(id, name, parents, quotaBytesUsed, webViewLink, iconLink, mimeType)").execute()
 
             items2 = results2.get('files', [])
             items2.sort(key=itemgetter('name'))
@@ -173,10 +194,10 @@ def get_child_sub_folders(service, parent_id, CSV_DATA, folder_id, sub_folder_pa
                     child_id = item2['id']
                     childname = item2['name']
                     file_size = 0
-                    if item2['mimeType'] == 'application/vnd.google-apps.folder':
+                    if item2['mimeType'] and item2['mimeType'] == 'application/vnd.google-apps.folder':
                         child_folder_path = sub_folder_path + "/" + childname
                         print("Processing folder " + child_folder_path)
-                        get_child_sub_folders(service, child_id, CSV_DATA, folder_id, child_folder_path)
+                        get_child_sub_folders(service, child_id, CSV_DATA, folder_id, child_folder_path, drivetype)
                     else:
                         if item2['quotaBytesUsed']:
                             file_size = round(int(item2['quotaBytesUsed']) / 1028,2)
